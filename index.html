@@ -1,0 +1,253 @@
+<html>
+
+  <head>
+    <title>Weather You Are</title>
+    <meta name="viewport" content="width=450, user-scalable=yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-touch-fullscreen" content="yes" /> 
+    <script src="https://maps.googleapis.com/maps/api/js?key=[YOUR-KEY-HERE]"></script>
+    <link rel="apple-touch-icon" href="wur.png" />
+  </head>
+
+  <body onLoad="checkRefresh()">
+    
+    <div id="outer" style="width: 430px; border: 2px #a0a0a0 solid; border-radius: 10px; background-color: #dfdfdf">
+
+      <div id="georesults" style="font-size: 3.5em; padding: 15px; width: 402px">
+	<p>
+	  ...
+	</p>
+      </div>
+
+      <div id="footer" style="width: 430px; height: 30px; font-size: 12; color: #aaaaaa">
+	<div style="float: left; width: 15px; height: 20px"> </div>
+	<div style="float: left">Update every 10 minutes <input id="rcb" type="checkbox" name="refresh" value="yes" onClick="rcbClicked()"></div>
+	<div style="float: right; width: 15px; height: 20px"> </div>
+	<div style="float: right"><a style="color: #aaaaaa; text-decoration: none" href="http://twitter.com/jambun" target="_blank">@jambun</a></div>
+      </div>
+
+      <script language="javascript">
+
+        var map = false;	
+	var tout = false;
+	var rcb = false;
+	var refreshTime = 600000;
+	var userMarker = false;
+	var stationMarker = false;
+	var latlngbounds = new google.maps.LatLngBounds( );
+	var station = false;
+	var lastTemp = false;
+	var showingCelcius = true;
+	var refreshCount = 0;
+	var userSelectedLocation = false;
+	var userSelectedLat = false;
+	var userSelectedLng = false;
+
+	function checkRefresh() {
+	    rcb = document.getElementById('rcb');
+	    if (window.location.search) {
+	        rcb.checked = true;
+	        tout = setTimeout("getPosition();", refreshTime);
+	    }
+        }
+
+	function rcbClicked() {
+	    if (rcb.checked) {
+	        tout = setTimeout("getPosition();", refreshTime);
+            } else {
+	        if (tout) {
+	            clearTimeout(tout);
+                }
+	    }
+	}
+
+	function googleMapShow(lat,long) {
+	    var latlng = new google.maps.LatLng(lat, long);
+	    var myOptions = {
+	        zoom: 9,
+	        center: latlng,
+	        mapTypeControl: false,
+	        streetViewControl: false,
+	        zoomControlOptions: {
+                    position: google.maps.ControlPosition.TOP_RIGHT
+	        },
+	        mapTypeId: google.maps.MapTypeId.ROADMAP
+	    };
+	    map = new google.maps.Map(document.getElementById("map_canvas"), myOptions);
+
+            userMarker = new google.maps.Marker({
+                position: latlng,
+                title:"you are here",
+	        clickable: true,
+	        zIndex: 9
+            });
+            userMarker.setMap(map);  
+	    latlngbounds.extend( latlng );
+
+	    google.maps.event.addListener(map, 'click', function(event) {
+	        userSelectedLocation = true;
+	        userSelectedLat = event.latLng.lat();
+	        userSelectedLng = event.latLng.lng();
+	        userMarker.setTitle("click to return to current location");
+	        gotLatLng(event.latLng.lat(), event.latLng.lng());
+	    });
+
+	    google.maps.event.addListener(userMarker, 'click', function(event) {
+	        if (userSelectedLocation) {
+	            userSelectedLocation = false;
+	            userMarker.setTitle("you are here");
+	            getPosition();
+	        }
+	    });
+	}
+	
+	function googleMapUpdate(lat, long) {
+	    var latlng = new google.maps.LatLng(lat, long);
+	    userMarker.setPosition(latlng);
+	    map.setCenter(latlng);
+	    latlngbounds = new google.maps.LatLngBounds( );
+	    latlngbounds.extend( latlng );
+	}
+
+	function gotPosition(position) {
+	    gotLatLng(position.coords.latitude, position.coords.longitude);
+	}
+
+	function gotLatLng(lat, lng) {
+	    if (refreshCount == 0) {
+	        document.getElementById('georesults').innerHTML = 
+	        '<div id="weather_canvas" style="float: left; width: 200px; height: 200px">' +
+	        '<br /><center>...</center><p style="font-size: 12"><br />... finding weather station</p></div>' +
+	        '<div id="map_canvas" style="float: left; width: 200px; height: 200px; border: 1px #a0a0a0 solid; border-radius: 2px"></div>' +
+	        '<p><br />' 
+	        + '</p>';
+
+	        googleMapShow(lat, lng, {maximumAge:600000});
+	    } else {
+	        googleMapUpdate(lat, lng);
+	    }
+
+	    weatherShow(lat, lng);
+	    rcbClicked();
+	    refreshCount++;
+    	}
+    	
+    	function errorPosition(err) {
+    	    document.getElementById('georesults').innerHTML = '<p>The page could not get your location.</p>';
+    	}
+	
+	function weatherShow(lat, lon) {
+	    var wurl = 'https://james.whaite.com/jambin/nst?r=500&n=1&lat='+lat+'&lon='+lon;
+	    var xhr = false;
+	    var self = this;
+	    if (window.XMLHttpRequest) {
+                xhr = new XMLHttpRequest();
+            }
+            else if (window.ActiveXObject) {
+                xhr = new ActiveXObject("Microsoft.XMLHTTP");
+            }
+            xhr.open('GET', wurl, true);
+            //xhr.onreadystatechange = function() {
+            xhr.onload = function(e) {
+                if (xhr.readyState == 4) {
+                    weatherResponse(xhr);
+                }
+            }
+            xhr.onerror = function(e) {
+	        document.getElementById('weather_canvas').innerHTML = '<p>' + xhr.status +'</p>';
+	    }
+            xhr.send(null);
+        }
+
+	function toggleTemp() {
+	    var tdd = document.getElementById('tempDisplay');
+	    if (showingCelcius) {
+	        var ft = Math.round(lastTemp*9/5+32);
+	        tdd.innerHTML = '<center>' + ft + '&deg;</center>';
+	        document.title = 'Weather You Are: ' + ft + '\u00b0';
+	        tdd.title = 'Fahrenheit [click for Celcius]';
+	        document.getElementById('windDisplay').innerHTML = station.windDescMPH + ' &nbsp;';
+	        document.getElementById('baroDisplay').innerHTML = station.baroInches + ' &nbsp;';
+	        showingCelcius = false;
+	    } else {
+	        tdd.innerHTML = '<center>' + lastTemp + '&deg;</center>';
+	        document.title = 'Weather You Are: ' + lastTemp + '\u00b0';
+	        tdd.title = 'Celcius [click for Fahrenheit]';
+	        document.getElementById('windDisplay').innerHTML = station.windDescription + ' &nbsp;';
+	        document.getElementById('baroDisplay').innerHTML = station.barometer + ' &nbsp;';
+	        showingCelcius = true;
+	    }
+	}
+
+        function weatherResponse(req){
+            var rj = eval('(' + req.responseText + ')');
+	    station = rj.station[0];
+	    lastTemp = station.temperature;
+	    var dt = lastTemp;
+            var dtit = 'Celcius [click for Fahrenheit]';
+	    var wind = station.windDescription;
+	    var baro = station.barometer;
+	    if (!showingCelcius) {
+	        dtit = 'Fahrenheit [click for Celcius]';
+	        dt = Math.round(lastTemp*9/5+32);
+	        wind = station.windDescMPH;
+	        baro = station.baroInches;
+	    }
+
+            document.getElementById("weather_canvas").innerHTML =
+            '<div style="font-size: 15; color: #666666; white-space: nowrap">' +
+            '<div style="float: left">' + station.cloud + ' </div>' +
+            '<div id="windDisplay" style="float: right; width: 100; text-align: right">' + wind + ' &nbsp;</div>' +
+            '<div style="clear: both"></div>' +
+	    '<div style="float: left">' + station.precipitation + '</div>' +
+            '<div id="baroDisplay" style="float: right">' + baro + ' &nbsp;</div></div>' +
+
+            '<div style="height: 45"></div>' +
+            '<div id="tempDisplay" title="' + dtit + '" style="cursor: pointer" onClick="toggleTemp()"><center>' + dt + '&deg;</center></div>' +
+            '<div style="height: 30"></div>' +
+
+	    '<div style="font-size: 12; color: #909090; white-space: nowrap">' +
+            '<div>Station: [' + station.code + '] ' + station.name + '</div>' +
+            '<div style="float: left">Distance: ' + station.distance + '</div>' +
+            '<div style="float: right">Source: <a style="color: #909090; text-decoration: none" href="http://weather.rap.ucar.edu/">UCAR</a>  &nbsp;</div>' +
+	    '</div>' +
+            '<div style="float: left; font-size: 10; color: #aaaaaa; white-space: nowrap">' + new Date() + '</div>';
+
+	    document.title = 'Weather You Are: ' + station.temperature + '\u00b0';
+	    var slatlng = new google.maps.LatLng(station.latitude, station.longitude);
+	    if (stationMarker == false) {
+                stationMarker = new google.maps.Marker({
+                    position: slatlng,
+                    title: station.code,
+	            icon: 'station.jpeg',
+	            zIndex: 1
+                });
+                stationMarker.setMap(map);  
+	    } else {
+	        stationMarker.setTitle(station.code);
+	        stationMarker.setPosition(slatlng);
+	    }
+	    latlngbounds.extend(slatlng);
+	    map.fitBounds( latlngbounds );
+        }
+
+	function getPosition() {
+	    if (userSelectedLocation) {
+	        gotLatLng(userSelectedLat, userSelectedLng);
+	    } else {
+	        if (navigator.geolocation) {
+	            navigator.geolocation.getCurrentPosition(gotPosition, errorPosition);
+	        } else {
+  	            document.getElementById('georesults').innerHTML = '<p>Your browser does not support geolocation.</p>';
+	        }
+	    }
+	}
+
+	getPosition();
+	
+      </script>
+      
+    </div>
+    
+  </body>
+</html>
